@@ -1,11 +1,12 @@
 --[[
-    AdminUI.lua
-    Unified UI: PLAYERS (ForceKick, Arrest, Kill, Goto, Bring) + COMBAT (RageKill, KillAura, SilentAim)
-    Movable panel (mouse + touch) with toggle button.
+    GRV-SCRIPT
+    Unified UI for Prison Life (Roblox)
+    Tabs: PLAYERS / COMBAT / PLAYER
+    ForceKick loops until target is kicked.
 ]]
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Services & references
+-- Services
 -- ─────────────────────────────────────────────────────────────────────────────
 local Players      = game:GetService("Players")
 local Teams        = game:GetService("Teams")
@@ -14,11 +15,12 @@ local StarterGui   = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
 local UIS          = game:GetService("UserInputService")
+local Lighting     = game:GetService("Lighting")
 
-local localp   = Players.LocalPlayer
+local localp    = Players.LocalPlayer
 local playerGui = localp:WaitForChild("PlayerGui")
-local storage  = game:GetService("ReplicatedStorage")
-local cam      = Workspace.CurrentCamera
+local storage   = game:GetService("ReplicatedStorage")
+local cam       = Workspace.CurrentCamera
 
 local team = {
     Neutral   = Teams:FindFirstChild("Neutral") or Teams:FindFirstChild("Civilian"),
@@ -28,12 +30,12 @@ local team = {
 }
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Shared notify
+-- Notify
 -- ─────────────────────────────────────────────────────────────────────────────
 local function notify(title, text, duration)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = title or "Admin",
+            Title = title or "GRV-SCRIPT",
             Text = tostring(text or ""),
             Duration = duration or 3,
         })
@@ -41,7 +43,7 @@ local function notify(title, text, duration)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Shared helpers
+-- Helpers
 -- ─────────────────────────────────────────────────────────────────────────────
 local function getch()
     if localp.Character then return localp.Character end
@@ -91,9 +93,7 @@ local function setMaxSimRadius()
         pcall(sethidden, localp, "SimulationRadius", 1e9)
         pcall(sethidden, localp, "MaximumSimulationRadius", 1e9)
     end
-    if typeof(setsim) == "function" then
-        pcall(setsim, 1e9)
-    end
+    if typeof(setsim) == "function" then pcall(setsim, 1e9) end
 end
 
 local function isNetworkOwned(part)
@@ -110,11 +110,10 @@ local function handlemissingcar2(cars)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Team change / crim teleport (from Arrest/Kill)
+-- Team change / crim2
 -- ─────────────────────────────────────────────────────────────────────────────
 local function crim2()
-    local hp = gethp()
-    if not hp then return end
+    local hp = gethp(); if not hp then return end
     local og, ogcam = hp.CFrame, cam.CFrame
     hp.CFrame = CFrame.new(-975, 108, 2071)
     repeat task.wait() until localp.Team and localp.Team.Name == "Criminals"
@@ -149,11 +148,10 @@ local function change(teamn)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- ARREST (from Arrest.lua)
+-- ARREST
 -- ─────────────────────────────────────────────────────────────────────────────
 local function animh()
-    local hum = gethm()
-    if not hum then return end
+    local hum = gethm(); if not hum then return end
     local animator = hum:FindFirstChildOfClass("Animator") or hum:WaitForChild("Animator", 2)
     if not animator then return end
     local a1 = Instance.new("Animation"); a1.AnimationId = "rbxassetid://215384594"
@@ -162,38 +160,28 @@ local function animh()
     local t2 = animator:LoadAnimation(a2); t2:Play(); t2.TimePosition = 2; t2:AdjustSpeed(0)
 end
 
-local function arrestPlayer(targetPlayer)
-    local player = targetPlayer
-    if not player or not player.Parent then
-        notify("Arrest", "Target not found", 4); return
-    end
+local function arrestPlayer(player)
+    if not player or not player.Parent then notify("Arrest", "Target not found", 4); return end
     local ch = player.Character
     local target = ch and ch:FindFirstChild("HumanoidRootPart")
     if not target then notify("Arrest", "Target Character Not Found", 4); return end
-
     if not ch:GetAttribute("Hostile") then
         notify("Arrest", "Cant arrest player, not a hostile", 4); return
     end
-
     local ogt = localp.Team and localp.Team.Name or "Inmates"
-
     if localp.Team and localp.Team.Name ~= "Guards" then
         change("Guards")
         repeat task.wait(0.1) until localp:FindFirstChild("Backpack")
             and localp.Backpack:FindFirstChild("Handcuffs")
     end
-
     local event = storage.Remotes.ArrestPlayer
     local hp = gethp(); local ch1 = getch()
     if not hp or not ch1 then notify("Arrest", "Local character not found", 4); return end
-
     if ch:FindFirstChild("ForceField") then
         notify("Arrest", "Waiting for ForceField", 4)
         repeat task.wait(0.1) until not ch:FindFirstChild("ForceField")
     end
-
     local og = hp.CFrame
-
     for _, v in pairs(ch1:GetChildren()) do
         if v:IsA("Tool") then v.Parent = localp.Backpack end
     end
@@ -203,30 +191,21 @@ local function arrestPlayer(targetPlayer)
         end
         localp.Backpack.Handcuffs.Parent = ch1
     end
-
     animh()
-
     for i = 1, 10 do
         pcall(function() event:InvokeServer(player, 1) end)
-        if hp and hp.Parent and target and target.Parent then
-            hp.CFrame = target.CFrame
-        end
+        if hp and hp.Parent and target and target.Parent then hp.CFrame = target.CFrame end
         task.wait()
     end
-
     local humanoid = gethm()
-    if humanoid then
-        for _, trac in pairs(humanoid:GetPlayingAnimationTracks()) do trac:Stop() end
-    end
-
+    if humanoid then for _, trac in pairs(humanoid:GetPlayingAnimationTracks()) do trac:Stop() end end
     change(ogt)
     repeat task.wait() until getch() and getch():FindFirstChild("HumanoidRootPart")
-    local newHp = gethp()
-    if newHp then newHp.CFrame = og end
+    local newHp = gethp(); if newHp then newHp.CFrame = og end
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- INVISIBLE + ANIM TRICKERY (from Kill.lua)
+-- INVISIBLE
 -- ─────────────────────────────────────────────────────────────────────────────
 local invisiblebool, invisibleconn, invisiblebind, invisanimtrack, invisoldcf
 
@@ -240,10 +219,7 @@ local function animationTrickery()
     anim.AnimationId = "rbxassetid://" .. (isR15 and "18665825805" or "215384594")
     local animator = hm:FindFirstChildOfClass("Animator") or hm:WaitForChild("Animator", 3)
     if not animator then return end
-    if invisanimtrack then
-        pcall(function() invisanimtrack:Stop(); invisanimtrack:Destroy() end)
-        invisanimtrack = nil
-    end
+    if invisanimtrack then pcall(function() invisanimtrack:Stop(); invisanimtrack:Destroy() end); invisanimtrack = nil end
     invisanimtrack = animator:LoadAnimation(anim)
     invisanimtrack.Priority = Enum.AnimationPriority.Action4
     invisanimtrack:Play(0, 0.001, 0)
@@ -260,7 +236,6 @@ local function invisible()
     if invisiblebool then return end
     invisiblebool = true; invisoldcf = nil
     setCharacterVisible(false); animationTrickery()
-
     local bindKey = "Invis_" .. tostring(tick())
     invisiblebind = bindKey
     pcall(function()
@@ -274,7 +249,6 @@ local function invisible()
             end
         end)
     end)
-
     if invisibleconn then invisibleconn:Disconnect(); invisibleconn = nil end
     invisibleconn = RunService.Heartbeat:Connect(function()
         if not invisiblebool then return end
@@ -301,14 +275,8 @@ local function uninvisible()
     if not invisiblebool then return end
     invisiblebool = false
     if invisibleconn then invisibleconn:Disconnect(); invisibleconn = nil end
-    if invisiblebind then
-        pcall(function() RunService:UnbindFromRenderStep(invisiblebind) end)
-        invisiblebind = nil
-    end
-    if invisanimtrack then
-        pcall(function() invisanimtrack:Stop(); invisanimtrack:Destroy() end)
-        invisanimtrack = nil
-    end
+    if invisiblebind then pcall(function() RunService:UnbindFromRenderStep(invisiblebind) end); invisiblebind = nil end
+    if invisanimtrack then pcall(function() invisanimtrack:Stop(); invisanimtrack:Destroy() end); invisanimtrack = nil end
     local ch = localp.Character
     local root = ch and ch:FindFirstChild("HumanoidRootPart")
     if root and invisoldcf then root.CFrame = invisoldcf end
@@ -316,35 +284,27 @@ local function uninvisible()
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- KILL (from Kill.lua)
+-- KILL
 -- ─────────────────────────────────────────────────────────────────────────────
 local function killPlayer(player)
     if not player or not player.Parent then notify("Kill", "Target not found", 4); return end
     local ogt = localp.Team and localp.Team.Name
-
     local ch = player.Character
     local target = ch and ch:FindFirstChild("HumanoidRootPart")
     if not target then notify("Kill", "Target Character Not Found", 4); return end
-
     if ch:FindFirstChild("ForceField") then
         notify("Kill", "Waiting for ForceField", 4)
         repeat task.wait(0.1) until not ch:FindFirstChild("ForceField")
     end
-
     if player.Team and player.Team.Name == "Guards" and localp.Team and localp.Team.Name == "Guards" then
         change("Inmates")
     end
-
     local ch1 = getch()
     if localp.Team and localp.Team.Name == "Criminals" and ch1 and ch1:FindFirstChild("ForceField") then
         repeat task.wait(0.1) until not ch1:FindFirstChild("ForceField")
     end
-
-    local hp = gethp(); local hm = gethm()
-    local og = hp.CFrame
-
+    local hp = gethp(); local hm = gethm(); local og = hp.CFrame
     invisible()
-
     local Event = storage.meleeEvent
     repeat
         if hm.Health == 0 then cam.CameraSubject = gethm(); break end
@@ -355,10 +315,8 @@ local function killPlayer(player)
         hm:ChangeState(3)
         task.wait()
     until not ch:FindFirstChild("Humanoid") or ch.Humanoid.Health <= 0
-
     for _, trac in pairs(gethm():GetPlayingAnimationTracks()) do trac:Stop() end
     uninvisible()
-
     if ogt == "Guards" then change(ogt) end
     if hp and hp.Parent then hp.CFrame = og end
     cam.CameraSubject = gethm()
@@ -372,8 +330,7 @@ local function gotoPlayer(player)
     local ch = player.Character
     local target = ch and ch:FindFirstChild("HumanoidRootPart")
     if not target then notify("Goto", "Target not found", 4); return end
-    local hp = gethp()
-    if not hp then notify("Goto", "Local character not found", 4); return end
+    local hp = gethp(); if not hp then notify("Goto", "Local character not found", 4); return end
     hp.CFrame = target.CFrame * CFrame.new(0, 0, 3)
     notify("Goto", "Moved to " .. (player.DisplayName or player.Name), 3)
 end
@@ -389,20 +346,13 @@ local function bringPlayer(targetPlayer)
     local targetChar = targetPlayer.Character
     local targetHum  = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
     if not targetHum then notify("Bring", "Target humanoid not found", 4); return end
-
     local cars = Workspace:FindFirstChild("CarContainer")
     if not cars then notify("Bring", "CarContainer not found", 4); return end
-
-    -- Save original position (player + camera)
-    local hp = gethp()
-    if not hp then notify("Bring", "No HumanoidRootPart", 4); return end
+    local hp = gethp(); if not hp then notify("Bring", "No HumanoidRootPart", 4); return end
     local originalCF = hp.CFrame
     local originalCam = cam.CFrame
-
     bringActive = true
     notify("Bring", "Starting...", 3)
-
-    -- Ensure inmate/guard team for prison buttons
     if localp.Team and localp.Team.Name == "Criminals" then
         pcall(function() storage.Remotes.RequestTeamChange:InvokeServer(team.Neutral, 1) end)
     end
@@ -413,33 +363,19 @@ local function bringPlayer(targetPlayer)
             task.wait()
             pcall(function() storage.Remotes.RequestTeamChange:InvokeServer(team.Inmates, 1) end)
             task.wait()
-        until (localp.Team and (localp.Team.Name == "Inmates" or localp.Team.Name == "Guards"))
-            or os.clock() - t0 > 6
+        until (localp.Team and (localp.Team.Name == "Inmates" or localp.Team.Name == "Guards")) or os.clock() - t0 > 6
     end
     task.wait(0.7)
-
-    -- Blacklist existing Squad cars
     local blacklisted = {}
-    for _, v in ipairs(cars:GetChildren()) do
-        if v.Name == "Squad" then blacklisted[v] = true end
-    end
-
-    -- Find spawners
+    for _, v in ipairs(cars:GetChildren()) do if v.Name == "Squad" then blacklisted[v] = true end end
     local buttons = Workspace:FindFirstChild("Prison_ITEMS")
     buttons = buttons and buttons:FindFirstChild("buttons")
-    if not buttons then
-        notify("Bring", "Buttons not found", 4); bringActive = false; return
-    end
+    if not buttons then notify("Bring", "Buttons not found", 4); bringActive = false; return end
     local children = buttons:GetChildren()
     local spawner4 = children[4] and children[4]:FindFirstChild("Car Spawner")
     local spawner5 = children[5] and children[5]:FindFirstChild("Car Spawner")
-    if not spawner4 then
-        notify("Bring", "Car spawner not found", 4); bringActive = false; return
-    end
-
-    -- Teleport to spawner4 to spawn car
+    if not spawner4 then notify("Bring", "Car spawner not found", 4); bringActive = false; return end
     hp.CFrame = spawner4.CFrame
-
     local interact = storage.Remotes.InteractWithItem
     local spawned = false
     local t0 = os.clock()
@@ -447,50 +383,28 @@ local function bringPlayer(targetPlayer)
         pcall(function() interact:InvokeServer(spawner4) end)
         if spawner5 then pcall(function() interact:InvokeServer(spawner5) end) end
         local tw = TweenService:Create(hp, TweenInfo.new(0.5), {CFrame = spawner4.CFrame})
-        tw:Play(); tw.Completed:Wait()
-        task.wait(0.1)
+        tw:Play(); tw.Completed:Wait(); task.wait(0.1)
         for _, v in ipairs(cars:GetChildren()) do
             if v.Name == "Squad" and not blacklisted[v] then spawned = true; break end
         end
         task.wait(0.2)
     end
-
-    if not bringActive or not spawned then
-        notify("Bring", "Car spawn failed", 4)
-        bringActive = false
-        return
-    end
-
-    -- Find the new car
+    if not bringActive or not spawned then notify("Bring", "Car spawn failed", 4); bringActive = false; return end
     local carModel
     for _, v in ipairs(cars:GetChildren()) do
         if v.Name == "Squad" and not blacklisted[v] then carModel = v; break end
     end
-    if not carModel then
-        notify("Bring", "Car not found", 4); bringActive = false; return
-    end
-
+    if not carModel then notify("Bring", "Car not found", 4); bringActive = false; return end
     local body = carModel:FindFirstChild("Body")
     local seat = body and body:FindFirstChild("VehicleSeat")
-    if not body or not seat then
-        notify("Bring", "Car body/seat missing", 4); bringActive = false; return
-    end
-
-    -- Sit in the driver seat ourselves
+    if not body or not seat then notify("Bring", "Car body/seat missing", 4); bringActive = false; return end
     local myHum = gethm()
     local tSeat = os.clock()
     while bringActive and myHum and myHum.SeatPart ~= seat and os.clock() - tSeat < 4 do
-        pcall(function()
-            hp.CFrame = seat.CFrame * CFrame.new(0, 2, 0)
-            seat:Sit(myHum)
-        end)
+        pcall(function() hp.CFrame = seat.CFrame * CFrame.new(0, 2, 0); seat:Sit(myHum) end)
         task.wait()
     end
-    if not bringActive or not myHum or myHum.SeatPart ~= seat then
-        notify("Bring", "Could not sit in car", 4); bringActive = false; return
-    end
-
-    -- Drive (teleport car) toward target until target is in the car
+    if not bringActive or not myHum or myHum.SeatPart ~= seat then notify("Bring", "Could not sit in car", 4); bringActive = false; return end
     notify("Bring", "Fetching " .. (targetPlayer.DisplayName or targetPlayer.Name) .. "...", 4)
     local tFollow = os.clock()
     local function targetInCar()
@@ -498,16 +412,13 @@ local function bringPlayer(targetPlayer)
         local th = tc and tc:FindFirstChildOfClass("Humanoid")
         return th and th.SeatPart and th.SeatPart:IsDescendantOf(carModel)
     end
-
     while bringActive and not targetInCar() and os.clock() - tFollow < 20 do
         local tc = targetPlayer.Character
         local th = tc and tc:FindFirstChildOfClass("Humanoid")
         local tr = tc and tc:FindFirstChild("HumanoidRootPart")
         if not tr or not th or th.Health <= 0 then break end
-        -- Move the car near the target (offset so they can enter)
         local dest = tr.CFrame * CFrame.new(0, 0, 6)
         pcall(function()
-            -- Move each BasePart of the car body
             for _, part in ipairs(body:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CFrame = dest * (seat.CFrame:ToObjectSpace(part.CFrame))
@@ -517,44 +428,35 @@ local function bringPlayer(targetPlayer)
         end)
         task.wait(0.05)
     end
-
     if not targetInCar() then
         notify("Bring", "Target did not enter car", 4)
         bringActive = false
-        -- Return to original position with car anyway
-        local myRoot = gethp()
-        if myRoot then myRoot.CFrame = originalCF end
+        local myRoot = gethp(); if myRoot then myRoot.CFrame = originalCF end
         cam.CFrame = originalCam
         return
     end
-
     notify("Bring", "Target in car, returning...", 3)
-    -- Return car + occupants to original position
     local function moveCarTo(cf)
         local currentSeat = seat.CFrame
         local delta = cf * currentSeat:Inverse()
         for _, part in ipairs(body:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CFrame = delta * part.CFrame
-            end
+            if part:IsA("BasePart") then part.CFrame = delta * part.CFrame end
         end
     end
     moveCarTo(originalCF)
     cam.CFrame = originalCam
-
-    -- Wait a moment for physics to settle
     task.wait(0.3)
-
-    -- Freeze car in place so the target stays
     bringActive = false
     notify("Bring", "Done", 3)
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- FORCEKICK (from forcekick.lua, trimmed to use player object)
+-- FORCEKICK (con bucle hasta lograr kick)
 -- ─────────────────────────────────────────────────────────────────────────────
 local kickEnabled, kickRunning, kickOriginalCF, kickRespawnConn
 local KICK_ANIM_ID, KICK_ANIM_TIME = "rbxassetid://148840371", 0.19
+local stopkick = false
+local forcekickLoopActive = false
 
 local function getTargetCar(plr)
     local char = plr and plr.Character
@@ -562,9 +464,7 @@ local function getTargetCar(plr)
     local seat = hum and hum.SeatPart
     if not seat or not seat:IsA("VehicleSeat") then return nil, nil end
     local model = seat:FindFirstAncestorOfClass("Model")
-    while model and model.Parent and model.Parent:IsA("Model") and model.Parent ~= Workspace do
-        model = model.Parent
-    end
+    while model and model.Parent and model.Parent:IsA("Model") and model.Parent ~= Workspace do model = model.Parent end
     return model, seat
 end
 
@@ -631,8 +531,7 @@ end
 
 local function startKickLoop(targetPlayer)
     kickEnabled = false; task.wait(0.15)
-    local myRoot = gethp()
-    if myRoot then kickOriginalCF = myRoot.CFrame end
+    local myRoot = gethp(); if myRoot then kickOriginalCF = myRoot.CFrame end
     kickEnabled = true
     if kickRespawnConn then kickRespawnConn:Disconnect() end
     kickRespawnConn = localp.CharacterAdded:Connect(function(newChar)
@@ -658,20 +557,14 @@ local function startKickLoop(targetPlayer)
     end)
 end
 
-local stopkick = false
-
-local function forcekickPlayer(targetPlayer)
+local function forcekickOnce(targetPlayer)
     local player = targetPlayer
-    if not player or not player.Parent then notify("ForceKick", "Target not found", 4); return end
-    if stopkick then stopkick = false end
-
+    if not player or not player.Parent then return false end
     local targetChar = player.Character
     local targetHum  = targetChar and targetChar:FindFirstChildOfClass("Humanoid")
-    if not targetHum then notify("ForceKick", "Couldn't find humanoid", 4); return end
-
+    if not targetHum then return false end
     local cars = Workspace:FindFirstChild("CarContainer")
-    if not cars then notify("ForceKick", "CarContainer not found", 4); return end
-
+    if not cars then return false end
     if localp.Team and localp.Team.Name == "Criminals" then
         pcall(function() storage.Remotes.RequestTeamChange:InvokeServer(team.Neutral, 1) end)
     end
@@ -681,35 +574,26 @@ local function forcekickPlayer(targetPlayer)
         pcall(function() storage.Remotes.RequestTeamChange:InvokeServer(team.Inmates, 1) end)
         task.wait()
     until (localp.Team and (localp.Team.Name == "Inmates" or localp.Team.Name == "Guards")) or stopkick
-    if stopkick then return end
+    if stopkick then return false end
     task.wait(0.7)
-
     local blacklisted = {}
-    for _, v in ipairs(cars:GetChildren()) do
-        if v.Name == "Squad" then blacklisted[v] = true end
-    end
-
-    local hp = gethp()
-    if not hp then notify("ForceKick", "No HumanoidRootPart", 4); return end
-
+    for _, v in ipairs(cars:GetChildren()) do if v.Name == "Squad" then blacklisted[v] = true end end
+    local hp = gethp(); if not hp then return false end
     local buttons = Workspace:FindFirstChild("Prison_ITEMS")
     buttons = buttons and buttons:FindFirstChild("buttons")
-    if not buttons then notify("ForceKick", "Buttons not found", 4); return end
+    if not buttons then return false end
     local children = buttons:GetChildren()
     local spawner4 = children[4] and children[4]:FindFirstChild("Car Spawner")
     local spawner5 = children[5] and children[5]:FindFirstChild("Car Spawner")
-    if not spawner4 then notify("ForceKick", "Car spawner not found", 4); return end
-
+    if not spawner4 then return false end
     hp.CFrame = spawner4.CFrame
-
     local ok = pcall(function()
         repeat
             if stopkick then return end
             pcall(function() storage.Remotes.InteractWithItem:InvokeServer(spawner4) end)
             if spawner5 then pcall(function() storage.Remotes.InteractWithItem:InvokeServer(spawner5) end) end
             local tw = TweenService:Create(hp, TweenInfo.new(0.7), {CFrame = spawner4.CFrame})
-            tw:Play(); tw.Completed:Wait()
-            task.wait(0.1)
+            tw:Play(); tw.Completed:Wait(); task.wait(0.1)
             local tw2 = TweenService:Create(hp, TweenInfo.new(0.7), {CFrame = CFrame.new(589, 98, 2494)})
             tw2:Play(); tw2.Completed:Wait()
         until (function()
@@ -719,35 +603,23 @@ local function forcekickPlayer(targetPlayer)
             return false
         end)() or stopkick
     end)
-
-    if not ok then notify("ForceKick", "Car spawn failed", 4); return end
-    if stopkick then return end
-
+    if not ok or stopkick then return false end
     local carModel
     for _, v in ipairs(cars:GetChildren()) do
         if v.Name == "Squad" and not blacklisted[v] then carModel = v; break end
     end
-    if not carModel or handlemissingcar2(cars) then
-        notify("ForceKick", "Car disappeared", 4); return
-    end
-
+    if not carModel or handlemissingcar2(cars) then return false end
     local body = carModel:FindFirstChild("Body")
     local seat = body and body:FindFirstChild("VehicleSeat")
-    if not body or not seat then notify("ForceKick", "Car body/seat missing", 4); return end
-
+    if not body or not seat then return false end
     local parts = {}
-    for _, v in ipairs(body:GetDescendants()) do
-        if v:IsA("BasePart") then table.insert(parts, v) end
-    end
-    if #parts == 0 then return end
-
+    for _, v in ipairs(body:GetDescendants()) do if v:IsA("BasePart") then table.insert(parts, v) end end
+    if #parts == 0 then return false end
     local sethidden = (getgenv and getgenv().sethiddenproperty) or _G.sethiddenproperty or sethiddenproperty
     local hasInstanceHandle = typeof(InstanceHandle) == "table" or typeof(InstanceHandle) == "function"
-
     startKickLoop(player)
-
     for _, v in ipairs(parts) do
-        if stopkick or handlemissingcar2(cars) then return end
+        if stopkick or handlemissingcar2(cars) then return false end
         if v and v.Parent then
             local success = pcall(function()
                 if isNetworkOwned(seat) then
@@ -768,18 +640,171 @@ local function forcekickPlayer(targetPlayer)
                     v.Velocity = Vector3.new(10000, 10000, 10000)
                 end
             end)
-            if not success and handlemissingcar2(cars) then return end
+            if not success and handlemissingcar2(cars) then return false end
         end
     end
+    return true
+end
+
+local function forcekickPlayer(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent then notify("ForceKick", "Target not found", 4); return end
+    if forcekickLoopActive then notify("ForceKick", "Already running", 3); return end
+    forcekickLoopActive = true
+    stopkick = false
+    notify("ForceKick", "Looping until " .. (targetPlayer.DisplayName or targetPlayer.Name) .. " is kicked...", 4)
+    task.spawn(function()
+        local attempts = 0
+        while not stopkick and targetPlayer and targetPlayer.Parent == Players do
+            attempts = attempts + 1
+            local ok = pcall(forcekickOnce, targetPlayer)
+            if not ok then
+                task.wait(1)
+            end
+            if stopkick then break end
+            task.wait(0.5)
+        end
+        forcekickLoopActive = false
+        kickEnabled = false
+        kickRunning = false
+        if kickRespawnConn then kickRespawnConn:Disconnect(); kickRespawnConn = nil end
+        if not stopkick then
+            notify("ForceKick", "Target left or kicked", 3)
+        end
+    end)
 end
 
 local function stopForceKick()
     stopkick = true
+    forcekickLoopActive = false
     kickEnabled = false
     kickRunning = false
     if kickRespawnConn then kickRespawnConn:Disconnect(); kickRespawnConn = nil end
     notify("ForceKick", "Stopped", 3)
 end
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- PLAYER: Movement features
+-- ─────────────────────────────────────────────────────────────────────────────
+local speedEnabled = false
+local speedValue = 50
+local jumpEnabled = false
+local jumpValue = 100
+local noclipEnabled = false
+local flyEnabled = false
+local flySpeed = 60
+local flyConn = nil
+local infiniteJumpEnabled = false
+local antiTazeEnabled = false
+local antiArrestEnabled = false
+
+-- Speed loop
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if speedEnabled then
+            local hum = gethm()
+            if hum then hum.WalkSpeed = speedValue end
+        end
+    end
+end)
+
+-- Jump loop
+task.spawn(function()
+    while true do
+        task.wait(0.2)
+        if jumpEnabled then
+            local hum = gethm()
+            if hum then hum.JumpPower = jumpValue; hum.UseJumpPower = true end
+        end
+    end
+end)
+
+-- Noclip loop
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if noclipEnabled then
+            local ch = localp.Character
+            if ch then
+                for _, part in ipairs(ch:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+            end
+        end
+    end
+end)
+
+-- Fly
+local function toggleFly()
+    if flyEnabled then
+        flyEnabled = false
+        if flyConn then flyConn:Disconnect(); flyConn = nil end
+        local hum = gethm(); if hum then hum.PlatformStand = false end
+        notify("Fly", "Disabled", 3)
+        return
+    end
+    flyEnabled = true
+    notify("Fly", "Enabled", 3)
+    local bodyGyro, bodyVel
+    flyConn = RunService.RenderStepped:Connect(function()
+        if not flyEnabled then return end
+        local ch = localp.Character
+        local root = ch and ch:FindFirstChild("HumanoidRootPart")
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        if not root or not hum then return end
+        hum.PlatformStand = true
+        if not bodyGyro or not bodyGyro.Parent then
+            bodyGyro = Instance.new("BodyGyro")
+            bodyGyro.P = 9e4
+            bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            bodyGyro.CFrame = root.CFrame
+            bodyGyro.Parent = root
+        end
+        if not bodyVel or not bodyVel.Parent then
+            bodyVel = Instance.new("BodyVelocity")
+            bodyVel.Velocity = Vector3.zero
+            bodyVel.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+            bodyVel.Parent = root
+        end
+        local move = Vector3.zero
+        local ctrl = UIS:GetFocusedTextBox() == nil
+        if ctrl then
+            if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cam.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cam.CFrame.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cam.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + cam.CFrame.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0, 1, 0) end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0, 1, 0) end
+        end
+        bodyVel.Velocity = move * flySpeed
+        bodyGyro.CFrame = cam.CFrame
+    end)
+end
+
+-- Infinite Jump
+UIS.JumpRequest:Connect(function()
+    if infiniteJumpEnabled then
+        local hum = gethm()
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- Anti-Taze (removes tased effect)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if antiTazeEnabled then
+            local ch = localp.Character
+            if ch then
+                for _, v in ipairs(ch:GetDescendants()) do
+                    if v.Name:lower():find("tase") or v.Name:lower():find("stun") then
+                        pcall(function() v:Destroy() end)
+                    end
+                end
+            end
+        end
+    end
+end)
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- COMBAT: RageKill
@@ -810,11 +835,8 @@ local function enableRageKill()
         if victim:lower():find(me, 1, true) or victim:lower():find(meDisplay, 1, true) then
             task.spawn(function()
                 local hm = gethm()
-                if hm and hm.Health == 0 then
-                    task.wait(Players.RespawnTime + 0.5)
-                end
-                local hp = gethp()
-                local oldCF = hp and hp.CFrame
+                if hm and hm.Health == 0 then task.wait(Players.RespawnTime + 0.5) end
+                local hp = gethp(); local oldCF = hp and hp.CFrame
                 local target = findplByName(killer)
                 if target then killPlayer(target) end
                 if oldCF then local n = gethp(); if n then n.CFrame = oldCF end end
@@ -839,14 +861,15 @@ local function enableKillAura()
     task.spawn(function()
         while kaurabool do
             local myRoot = gethp()
-            if not myRoot then task.wait(0.1); continue end
-            for _, plr in pairs(Players:GetPlayers()) do
-                if plr ~= localp and plr.Character then
-                    local root = plr.Character:FindFirstChild("HumanoidRootPart")
-                    local hum  = plr.Character:FindFirstChildOfClass("Humanoid")
-                    if root and hum and hum.Health > 0
-                        and (myRoot.Position - root.Position).Magnitude <= 15 then
-                        pcall(function() storage.meleeEvent:FireServer(plr, 1, 1) end)
+            if myRoot then
+                for _, plr in pairs(Players:GetPlayers()) do
+                    if plr ~= localp and plr.Character then
+                        local root = plr.Character:FindFirstChild("HumanoidRootPart")
+                        local hum  = plr.Character:FindFirstChildOfClass("Humanoid")
+                        if root and hum and hum.Health > 0
+                            and (myRoot.Position - root.Position).Magnitude <= 15 then
+                            pcall(function() storage.meleeEvent:FireServer(plr, 1, 1) end)
+                        end
                     end
                 end
             end
@@ -882,9 +905,7 @@ local function isVisible(char, origin)
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = localp.Character and { localp.Character } or {}
     for _, part in ipairs({
-        char:FindFirstChild(AIM_PART),
-        char:FindFirstChild("Head"),
-        char:FindFirstChild("HumanoidRootPart")
+        char:FindFirstChild(AIM_PART), char:FindFirstChild("Head"), char:FindFirstChild("HumanoidRootPart")
     }) do
         if not part then continue end
         local dir = part.Position - origin
@@ -1002,7 +1023,7 @@ local function disableSilentAim()
 end
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- UI: build panel
+-- UI: Horizontal tabbed panel
 -- ─────────────────────────────────────────────────────────────────────────────
 local COL_BG       = Color3.fromRGB(22, 22, 26)
 local COL_PANEL    = Color3.fromRGB(32, 32, 38)
@@ -1016,16 +1037,16 @@ local COL_TEXT     = Color3.fromRGB(235, 235, 235)
 local COL_SUBTEXT  = Color3.fromRGB(160, 160, 165)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "AdminUI"
+gui.Name = "GRVScript"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 100
 gui.Parent = playerGui
 
--- Main panel
+-- Main panel (horizontal layout)
 local panel = Instance.new("Frame")
 panel.Name = "Panel"
-panel.Size = UDim2.new(0, 320, 0, 460)
+panel.Size = UDim2.new(0, 560, 0, 380)
 panel.Position = UDim2.new(0, 20, 0, 20)
 panel.BackgroundColor3 = COL_BG
 panel.BorderSizePixel = 0
@@ -1033,7 +1054,7 @@ panel.Active = true
 panel.Parent = gui
 Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
 
--- Title bar (drag handle)
+-- Title bar (draggable)
 local titleBar = Instance.new("Frame")
 titleBar.Name = "TitleBar"
 titleBar.Size = UDim2.new(1, 0, 0, 32)
@@ -1047,7 +1068,7 @@ local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, -70, 1, 0)
 titleLabel.Position = UDim2.new(0, 10, 0, 0)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "ADMIN"
+titleLabel.Text = "GRV-SCRIPT"
 titleLabel.TextColor3 = COL_TEXT
 titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextSize = 16
@@ -1067,34 +1088,90 @@ toggleBtn.TextSize = 16
 toggleBtn.Parent = titleBar
 Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 4)
 
--- Body container
-local body = Instance.new("ScrollingFrame")
-body.Name = "Body"
-body.Size = UDim2.new(1, -16, 1, -42)
-body.Position = UDim2.new(0, 8, 0, 36)
-body.BackgroundTransparency = 1
-body.BorderSizePixel = 0
-body.ScrollBarThickness = 5
-body.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 100)
-body.CanvasSize = UDim2.new(0, 0, 0, 0)
-body.AutomaticCanvasSize = Enum.AutomaticSize.Y
-body.Parent = panel
+-- Tab bar
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1, -16, 0, 30)
+tabBar.Position = UDim2.new(0, 8, 0, 36)
+tabBar.BackgroundTransparency = 1
+tabBar.Parent = panel
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.Padding = UDim.new(0, 6)
+tabLayout.Parent = tabBar
 
-local bodyLayout = Instance.new("UIListLayout")
-bodyLayout.FillDirection = Enum.FillDirection.Vertical
-bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
-bodyLayout.Padding = UDim.new(0, 6)
-bodyLayout.Parent = body
+local tabs = {}
+local function makeTab(name, order)
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(0, 120, 1, 0)
+    b.BackgroundColor3 = COL_BTN
+    b.BorderSizePixel = 0
+    b.Text = name
+    b.TextColor3 = COL_TEXT
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 14
+    b.LayoutOrder = order
+    b.Parent = tabBar
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 4)
+    tabs[name] = b
+    return b
+end
 
--- Helpers for building UI
+local tabPlayers  = makeTab("PLAYERS", 1)
+local tabCombat   = makeTab("COMBAT", 2)
+local tabPlayer   = makeTab("PLAYER", 3)
+
+-- Content container
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -16, 1, -74)
+content.Position = UDim2.new(0, 8, 0, 70)
+content.BackgroundTransparency = 1
+content.Parent = panel
+
+local pages = {}
+local function makePage(name)
+    local f = Instance.new("ScrollingFrame")
+    f.Size = UDim2.new(1, 0, 1, 0)
+    f.BackgroundTransparency = 1
+    f.BorderSizePixel = 0
+    f.ScrollBarThickness = 5
+    f.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 100)
+    f.CanvasSize = UDim2.new(0, 0, 0, 0)
+    f.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    f.Visible = false
+    f.Parent = content
+    local lay = Instance.new("UIListLayout")
+    lay.FillDirection = Enum.FillDirection.Vertical
+    lay.SortOrder = Enum.SortOrder.LayoutOrder
+    lay.Padding = UDim.new(0, 5)
+    lay.Parent = f
+    pages[name] = f
+    return f
+end
+
+local pagePlayers = makePage("PLAYERS")
+local pageCombat  = makePage("COMBAT")
+local pagePlayer  = makePage("PLAYER")
+
+local function switchTab(name)
+    for n, f in pairs(pages) do f.Visible = (n == name) end
+    for n, b in pairs(tabs) do
+        b.BackgroundColor3 = (n == name) and COL_ROW_SEL or COL_BTN
+    end
+end
+
+tabPlayers.MouseButton1Click:Connect(function() switchTab("PLAYERS") end)
+tabCombat.MouseButton1Click:Connect(function() switchTab("COMBAT") end)
+tabPlayer.MouseButton1Click:Connect(function() switchTab("PLAYER") end)
+
+-- UI helpers
 local function makeSection(parent, text, order)
     local sec = Instance.new("TextLabel")
-    sec.Size = UDim2.new(1, 0, 0, 20)
+    sec.Size = UDim2.new(1, 0, 0, 18)
     sec.BackgroundTransparency = 1
     sec.Text = text
     sec.TextColor3 = COL_SUBTEXT
     sec.Font = Enum.Font.GothamBold
-    sec.TextSize = 12
+    sec.TextSize = 11
     sec.TextXAlignment = Enum.TextXAlignment.Left
     sec.LayoutOrder = order
     sec.Parent = parent
@@ -1117,56 +1194,38 @@ local function makeButton(parent, text, color, order, callback)
     return b
 end
 
--- ── PLAYERS section ──────────────────────────────────────────────────────────
-makeSection(body, "PLAYERS", 1)
-
--- Placeholder list (scrolling)
+-- ── PLAYERS page ─────────────────────────────────────────────────────────────
 local playerList = Instance.new("ScrollingFrame")
-playerList.Name = "PlayerList"
-playerList.Size = UDim2.new(1, 0, 0, 160)
+playerList.Size = UDim2.new(1, 0, 0, 140)
 playerList.BackgroundColor3 = COL_PANEL
 playerList.BorderSizePixel = 0
 playerList.ScrollBarThickness = 5
 playerList.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 100)
 playerList.CanvasSize = UDim2.new(0, 0, 0, 0)
 playerList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-playerList.LayoutOrder = 2
-playerList.Parent = body
+playerList.LayoutOrder = 1
+playerList.Parent = pagePlayers
 Instance.new("UICorner", playerList).CornerRadius = UDim.new(0, 4)
-
 local plLayout = Instance.new("UIListLayout")
 plLayout.FillDirection = Enum.FillDirection.Vertical
 plLayout.SortOrder = Enum.SortOrder.LayoutOrder
 plLayout.Padding = UDim.new(0, 3)
 plLayout.Parent = playerList
-Instance.new("UIPadding", playerList).PaddingTop = UDim.new(0, 4)
--- (also apply left/right/bottom padding via a proper UIPadding instance)
-local plPad = playerList:FindFirstChildOfClass("UIPadding")
-plPad.PaddingLeft = UDim.new(0, 4)
-plPad.PaddingRight = UDim.new(0, 4)
-plPad.PaddingBottom = UDim.new(0, 4)
+local plPad = Instance.new("UIPadding")
+plPad.PaddingTop = UDim.new(0, 4); plPad.PaddingLeft = UDim.new(0, 4)
+plPad.PaddingRight = UDim.new(0, 4); plPad.PaddingBottom = UDim.new(0, 4)
+plPad.Parent = playerList
 
 local selectedPlayer = nil
 local rowButtons = {}
 
-local function updateSelectedLabel()
-    -- reflected via row styling only; no extra label needed
-end
-
 local function applyRowStyle(btn, player)
-    if player == selectedPlayer then
-        btn.BackgroundColor3 = COL_ROW_SEL
-    else
-        btn.BackgroundColor3 = COL_ROW
-    end
+    btn.BackgroundColor3 = (player == selectedPlayer) and COL_ROW_SEL or COL_ROW
 end
 
 local function selectPlayer(player)
     selectedPlayer = (selectedPlayer == player) and nil or player
-    for p, b in pairs(rowButtons) do
-        if b and b.Parent then applyRowStyle(b, p) end
-    end
-    updateSelectedLabel()
+    for p, b in pairs(rowButtons) do if b and b.Parent then applyRowStyle(b, p) end end
 end
 
 local function rebuildPlayerList()
@@ -1174,9 +1233,7 @@ local function rebuildPlayerList()
     rowButtons = {}
     if selectedPlayer and selectedPlayer.Parent ~= Players then selectedPlayer = nil end
     local all = Players:GetPlayers()
-    table.sort(all, function(a, b)
-        return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower()
-    end)
+    table.sort(all, function(a, b) return (a.DisplayName or a.Name):lower() < (b.DisplayName or b.Name):lower() end)
     local idx = 0
     for _, p in ipairs(all) do
         if p ~= localp then
@@ -1193,9 +1250,7 @@ local function rebuildPlayerList()
             b.LayoutOrder = idx
             b.Parent = playerList
             Instance.new("UICorner", b).CornerRadius = UDim.new(0, 3)
-            b.MouseButton1Click:Connect(function()
-                if p.Parent then selectPlayer(p) end
-            end)
+            b.MouseButton1Click:Connect(function() if p.Parent then selectPlayer(p) end end)
             rowButtons[p] = b
             applyRowStyle(b, p)
         end
@@ -1209,90 +1264,107 @@ Players.PlayerRemoving:Connect(function(p)
     task.defer(rebuildPlayerList)
 end)
 
-local function requireSelection(cbName)
+local function requireSelection(name)
     if not selectedPlayer or not selectedPlayer.Parent then
-        notify(cbName, "Select a player first", 3)
-        return nil
+        notify(name, "Select a player first", 3); return nil
     end
     return selectedPlayer
 end
 
-makeButton(body, "ForceKick", COL_BTN_RED, 3, function()
+makeButton(pagePlayers, "ForceKick (Loop)", COL_BTN_RED, 2, function()
     local p = requireSelection("ForceKick"); if not p then return end
-    stopkick = false
     task.spawn(forcekickPlayer, p)
 end)
-
-makeButton(body, "Stop ForceKick", COL_BTN, 4, function()
-    stopForceKick()
-end)
-
-makeButton(body, "Arrest", COL_BTN_ORG, 5, function()
+makeButton(pagePlayers, "Stop ForceKick", COL_BTN, 3, function() stopForceKick() end)
+makeButton(pagePlayers, "Arrest", COL_BTN_ORG, 4, function()
     local p = requireSelection("Arrest"); if not p then return end
     task.spawn(arrestPlayer, p)
 end)
-
-makeButton(body, "Kill", COL_BTN_RED, 6, function()
+makeButton(pagePlayers, "Kill", COL_BTN_RED, 5, function()
     local p = requireSelection("Kill"); if not p then return end
     task.spawn(killPlayer, p)
 end)
-
-makeButton(body, "Goto", COL_BTN_GRN, 7, function()
+makeButton(pagePlayers, "Goto", COL_BTN_GRN, 6, function()
     local p = requireSelection("Goto"); if not p then return end
     gotoPlayer(p)
 end)
-
-makeButton(body, "Bring", COL_BTN_GRN, 8, function()
+makeButton(pagePlayers, "Bring", COL_BTN_GRN, 7, function()
     local p = requireSelection("Bring"); if not p then return end
     task.spawn(bringPlayer, p)
 end)
 
--- ── COMBAT section ───────────────────────────────────────────────────────────
-makeSection(body, "COMBAT", 20)
-
-makeButton(body, "RageKill: OFF", COL_BTN, 21, function(btn)
+-- ── COMBAT page ─────────────────────────────────────────────────────────────
+makeSection(pageCombat, "COMBAT", 1)
+makeButton(pageCombat, "RageKill: OFF", COL_BTN, 2, function(btn)
     if rageConn then disableRageKill() else enableRageKill() end
     btn.Text = rageConn and "RageKill: ON" or "RageKill: OFF"
     btn.BackgroundColor3 = rageConn and COL_BTN_GRN or COL_BTN
 end)
-
-makeButton(body, "KillAura: OFF", COL_BTN, 22, function(btn)
+makeButton(pageCombat, "KillAura: OFF", COL_BTN, 3, function(btn)
     if kaurabool then disableKillAura() else enableKillAura() end
     btn.Text = kaurabool and "KillAura: ON" or "KillAura: OFF"
     btn.BackgroundColor3 = kaurabool and COL_BTN_GRN or COL_BTN
 end)
-
-makeButton(body, "SilentAim: OFF", COL_BTN, 23, function(btn)
+makeButton(pageCombat, "SilentAim: OFF", COL_BTN, 4, function(btn)
     if silentAimEnabled then disableSilentAim() else enableSilentAim() end
     btn.Text = silentAimEnabled and "SilentAim: ON" or "SilentAim: OFF"
     btn.BackgroundColor3 = silentAimEnabled and COL_BTN_GRN or COL_BTN
 end)
 
+-- ── PLAYER page (movement) ──────────────────────────────────────────────────
+makeSection(pagePlayer, "MOVEMENT", 1)
+makeButton(pagePlayer, "Speed: OFF", COL_BTN, 2, function(btn)
+    speedEnabled = not speedEnabled
+    btn.Text = speedEnabled and ("Speed: " .. speedValue) or "Speed: OFF"
+    btn.BackgroundColor3 = speedEnabled and COL_BTN_GRN or COL_BTN
+end)
+makeButton(pagePlayer, "Jump: OFF", COL_BTN, 3, function(btn)
+    jumpEnabled = not jumpEnabled
+    btn.Text = jumpEnabled and ("Jump: " .. jumpValue) or "Jump: OFF"
+    btn.BackgroundColor3 = jumpEnabled and COL_BTN_GRN or COL_BTN
+end)
+makeButton(pagePlayer, "Noclip: OFF", COL_BTN, 4, function(btn)
+    noclipEnabled = not noclipEnabled
+    btn.Text = noclipEnabled and "Noclip: ON" or "Noclip: OFF"
+    btn.BackgroundColor3 = noclipEnabled and COL_BTN_GRN or COL_BTN
+end)
+makeButton(pagePlayer, "Fly: OFF", COL_BTN, 5, function(btn)
+    toggleFly()
+    btn.Text = flyEnabled and "Fly: ON" or "Fly: OFF"
+    btn.BackgroundColor3 = flyEnabled and COL_BTN_GRN or COL_BTN
+end)
+makeButton(pagePlayer, "Infinite Jump: OFF", COL_BTN, 6, function(btn)
+    infiniteJumpEnabled = not infiniteJumpEnabled
+    btn.Text = infiniteJumpEnabled and "Infinite Jump: ON" or "Infinite Jump: OFF"
+    btn.BackgroundColor3 = infiniteJumpEnabled and COL_BTN_GRN or COL_BTN
+end)
+
+makeSection(pagePlayer, "UTILITY", 10)
+makeButton(pagePlayer, "Anti-Taze: OFF", COL_BTN, 11, function(btn)
+    antiTazeEnabled = not antiTazeEnabled
+    btn.Text = antiTazeEnabled and "Anti-Taze: ON" or "Anti-Taze: OFF"
+    btn.BackgroundColor3 = antiTazeEnabled and COL_BTN_GRN or COL_BTN
+end)
+
+switchTab("PLAYERS")
+
 -- ─────────────────────────────────────────────────────────────────────────────
--- Drag: title bar (mouse + touch)
+-- Drag helpers (mouse + touch)
 -- ─────────────────────────────────────────────────────────────────────────────
 local function makeDraggable(frame, handle)
     local dragging = false
     local dragStart, startPos
-
-    local function begin(input)
-        dragging = true
-        dragStart = input.Position
-        startPos = frame.Position
-        if input.UserInputType == Enum.UserInputType.Touch then
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
-    end
-
-    handle.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            begin(input)
-        end
     end)
-
     UIS.InputChanged:Connect(function(input)
         if not dragging then return end
         if input.UserInputType == Enum.UserInputType.MouseMovement
@@ -1304,7 +1376,6 @@ local function makeDraggable(frame, handle)
             )
         end
     end)
-
     UIS.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1
             or input.UserInputType == Enum.UserInputType.Touch then
@@ -1316,7 +1387,7 @@ end
 makeDraggable(panel, titleBar)
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Toggle UI (hide panel → show floating button)
+-- Toggle UI (floating button)
 -- ─────────────────────────────────────────────────────────────────────────────
 local toggleFrame = Instance.new("Frame")
 toggleFrame.Name = "ToggleButton"
@@ -1327,7 +1398,7 @@ toggleFrame.BorderSizePixel = 0
 toggleFrame.Visible = false
 toggleFrame.Active = true
 toggleFrame.Parent = gui
-Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(1, 0) -- circular
+Instance.new("UICorner", toggleFrame).CornerRadius = UDim.new(1, 0)
 
 local toggleText = Instance.new("TextButton")
 toggleText.Size = UDim2.new(1, 0, 1, 0)
@@ -1343,19 +1414,10 @@ local function setPanelVisible(v)
     toggleFrame.Visible = not v
 end
 
-toggleBtn.MouseButton1Click:Connect(function()
-    setPanelVisible(false)
-end)
-
-toggleText.MouseButton1Click:Connect(function()
-    setPanelVisible(true)
-end)
-
--- Draggable toggle button
+toggleBtn.MouseButton1Click:Connect(function() setPanelVisible(false) end)
+toggleText.MouseButton1Click:Connect(function() setPanelVisible(true) end)
 makeDraggable(toggleFrame, toggleFrame)
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Done
--- ─────────────────────────────────────────────────────────────────────────────
-notify("AdminUI", "Loaded", 4)
-print("[AdminUI] Loaded")
+notify("GRV-SCRIPT", "Loaded", 4)
+print("[GRV-SCRIPT] Loaded")
